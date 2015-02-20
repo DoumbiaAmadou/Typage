@@ -4,7 +4,7 @@
 
 %}
 
-%token VAL DEF IN END IF THEN ELSE EVAL UPPERSAND
+%token VAL DEF IN END IF THEN ELSE EVAL UPPERSAND QMARK
 %token PLUS MINUS STAR SLASH GT GTE LT LTE EQUAL
 %token LPAREN RPAREN LBRACKET RBRACKET ASSIGNS COMMA SEMICOLON EOF
 %token<int> INT
@@ -70,6 +70,11 @@ expression:
   END
 {
   IfThenElse (c, t, f)
+}
+| QMARK LPAREN e=located(expression) RPAREN
+  LPAREN es=separated_list(COMMA, located(expression)) RPAREN
+{
+  UnknownFunCall (e, es)
 }
 | f=function_identifier
   LPAREN es=separated_list(COMMA, located(expression)) RPAREN
