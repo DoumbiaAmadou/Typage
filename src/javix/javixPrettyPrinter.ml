@@ -70,7 +70,7 @@ and label lab =
 and instruction p = function
   | Box -> "invokestatic "^p.classname^"/box(I)Ljava/lang/Integer;"
   | Unbox -> "invokestatic "^p.classname^"/unbox(Ljava/lang/Integer;)I"
-  | Bipush c -> "bipush " ^ string_of_int c
+  | Bipush c -> push c
   | Pop -> "pop"
   | Swap -> "swap"
   | Binop op -> binop op
@@ -104,6 +104,15 @@ and cmpop = function
   | LE  -> "le"
   | GT  -> "gt"
   | GE  -> "le"
+
+and push n =
+  let s = string_of_int n in
+  let maxbyte = (1 lsl 8) - 1 and minbyte = - (1 lsl 8)
+  and maxshort = (1 lsl 16) - 1 and minshort = - (1 lsl 16) in
+  if 0 <= n && n <= 5 then "iconst_"^s
+  else if minbyte <= n && n <= maxbyte then "bipush "^s
+  else if minshort <= n && n <= maxshort then "sipush "^s
+  else "ldc "^s
 
 let to_string f x =
   let b = Buffer.create 13 in
