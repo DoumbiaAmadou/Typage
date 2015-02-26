@@ -8,7 +8,21 @@ let error = Error.error "during type checking"
 (** Basic types. *)
 let tyint  = TyBase (TId "int", [])
 let tybool = TyBase (TId "bool", [])
+      
+type standard_typ = 
+  |STInteger
+  |STBoolean
+  |STCstTyp of string * standard_typ list
+  |STArr of standard_typ * standard_typ
+  |STVar of standard_typvar
+  |STUnit
 
+  and standard_typvar =
+    {
+      id : string;
+      mutable content : standard_typ option
+    }
+         
 (** During typechecking, we thread an environment that contains
     the type of variables and the type definitions. *)
 module TypingEnvironment : sig
@@ -189,11 +203,57 @@ let typecheck tenv ast =
 
   and well_formed_type_definition pos tenv = function
     | RecordTy ltys ->
+       
          failwith "Student! This is your job!"
 
     | TaggedUnionTy ktys ->
          failwith "Student! This is your job!"
+      
+  and get_standard_typ typ : standard_typ = match typ with
+    |TyBase(tid,tList) -> begin
+			  match tid with
+			  |TId("int") -> STInteger
+			  |TId("bool") -> STBoolean
+			  |TId(_) -> 
+			    begin
+			      match tList with
+			      |[] -> failwith "error: TyBase type undefined!"
+			      |_ -> failwith "error: TyBase type undefined! (TODO)"
+			    end
+			end
+    |TyTuple(typ_list) -> STCstTyp("tuple",(get_standard_typ_list typ_list))
+    |TyArrow(t1,t2) -> STArr((get_standard_typ t1),(get_standard_typ t2))
 
+  and get_standard_typ_list typ_list : standard_typ list = match typ_list with
+    |[] -> []
+    |a::tail -> get_standard_typ(a)::(get_standard_typ_list tail)
+    
+  and mgu list : unit = match list with
+    |[] -> ()
+    |(a,b)::tail -> match a, b with
+		    |STInteger, STInteger -> ()
+		    |STBoolean, STBoolean -> ()
+		    |STUnit,STUnit -> ()
+		    |STCstTyp(id1,st_typ_list1), STCstTyp(id2,st_typ_list2) -> 
+		      if (id1<>id2) then failwith "error: not the same type!"
+		      else
+			begin
+			  match st_typ_list1, st_typ_list2 with
+			  |[], [] -> ()
+			  |[t1],[t2] -> mgu ((t1,t2)::tail)
+			  |t1::tail1, t2::tail2 -> mgu ((t1,t2)::(STCstTyp(id1,tail1),STCstTyp(id2,tail2))::tail);
+			  |_, _ -> failwith "error: not the same type!"
+			end						       
+		    |STArr(t1,t2),STArr(t3,t4) -> mgu ((t1,t3)::(t2,t4)::tail)
+		    |STVar(tv1),STVar(tv2) when tv1.id = tv2.id -> mgu tail
+		    |STVar(tv1),t | t,STVar(tv1) ->
+				    (*rajouter verif tv1 n'appartient pas a t*)
+				    begin
+				      match tv1.content with
+				      |None -> tv1.content <- Some(b); mgu tail
+				      |Some(t1) -> mgu ((t1,b)::tail)
+				    end
+		    |_ -> failwith "error: not the same type!"
 
   (** [define_value tenv p e] returns a new environment that associates
       a type to each of the variables bound by the pattern [p]. *)
@@ -205,20 +265,22 @@ let typecheck tenv ast =
   and infer_expression_type tenv e =
     let pos = Position.position e in
     match Position.value e with
-      | Fun (x, e) ->
-           failwith "Student! This is your job!"
+      | Fun (x, e) -> 
+	 failwith "Student! This is your job!"
 
       | RecFuns fs ->
-           failwith "Student! This is your job!"
+         (* match fs with
+	   |[] -> failwith "parsing error"
+	   |(ty_id,exprLoc)::tail -> *)
+	 failwith "Student! This is your job!"
 
       | Apply (a, b) ->
            failwith "Student! This is your job!"
 
-      | Literal l ->
-           failwith "Student! This is your job!"
+      | Literal l -> failwith "Student! This is your job!"
 
-      | Variable x ->
-           failwith "Student! This is your job!"
+      | Variable x -> failwith "Student! This is your job!"
+	 (*infer_expression_type tenv (lookup tenv x) *)
 
       | Define (p, e1, e2) ->
            failwith "Student! This is your job!"
