@@ -4,7 +4,7 @@ open HopixAST
 
 (** Type checker error message producer. *)
 let error = Error.error "during type checking"
-
+let incrID : int ref = ref 0 
 (** Basic types. *)
 let tyint  = TyBase (TId "int", [])
 let tybool = TyBase (TId "bool", [])
@@ -22,7 +22,8 @@ type standard_typ =
       id : string;
       mutable content : standard_typ option
     }
-         
+
+ 
 (** During typechecking, we thread an environment that contains
     the type of variables and the type definitions. *)
 module TypingEnvironment : sig
@@ -186,6 +187,13 @@ let initial_typing_environment () =
 
 (** [typecheck tenv ast] checks that [ast] is a well-formed program
     under the typing environment [tenv]. *)
+ let newtyvar () : standard_typvar =
+   incrID := !incrID+1 ;  
+   let id = !incrID in
+   {id = string_of_int(id) ;content= None}  
+
+let rec   newVariablelist s = if s = 0 then [] else  newtyvar():: (newVariablelist (s-1)) 
+
 let typecheck tenv ast =
 
   let rec program tenv p =
@@ -202,12 +210,15 @@ let typecheck tenv ast =
         TypingEnvironment.bind_type_definition tenv t tdef
 
   and well_formed_type_definition pos tenv = function
-    | RecordTy ltys ->
-       
-         failwith "Student! This is your job!"
+    | RecordTy ltys -> check_unicity pos ltys " Record" ;
+      let _=   List.map (fun (x,y) -> get_standard_typ y ) ltys in 
+      () 
+    
 
     | TaggedUnionTy ktys ->
-         failwith "Student! This is your job!"
+      check_tag_unicity pos ktys " TaggedUnionTy"  ; 
+    let _=  List.map (fun (x,y) -> List.map (fun tx -> get_standard_typ  tx) y ) ktys 
+      in ()     
       
   and get_standard_typ typ : standard_typ = match typ with
     |TyBase(tid,tList) -> begin
@@ -255,27 +266,45 @@ let typecheck tenv ast =
 				    end
 		    |_ -> failwith "error: not the same type!"
 
+  
+
   (** [define_value tenv p e] returns a new environment that associates
       a type to each of the variables bound by the pattern [p]. *)
+
   and define_value tenv p e =
-       failwith "Student! This is your job!"
+      match (Position.value p , infer_expression_type tenv e ) with 
+        | (PWildcard , _ ) -> tenv  
+        | (PVariable i, t )  -> TypingEnvironment.bind  tenv   i t 
+        | (PTuple li , t ) -> 
+              let a = (newVariablelist (List.length li) ) in  
+              let l = List.combine ( a) ( get_standard_typ t) in
+              mgu(l);  
+              List.fold_left (fun e v typ -> bind  e v t ) tenv li  t 
+                          
+        | (PTaggedValues (tag,il )) , u -> 
+          let (id , lab) =  TypingEnvironment.lookup_tagged_union_type_from_tag tenv tag in
+          let typlist = List.assoc tag lab in   
+          mgu([STCstTyp (id,typlist) ; u ] ) ;                    
+           List.fold_left (fun e v typ -> bind  e v t ) tenv il typlist 
+                                        
+  
 
   (** [infer_expression_type tenv e] returns the type of the expression
       [e] under the environment [tenv] if [e] is well-typed. *)
   and infer_expression_type tenv e =
     let pos = Position.position e in
     match Position.value e with
-      | Fun (x, e) -> 
-	 failwith "Student! This is your job!"
+      | Fun (x, e) -> let tyx = match snd x with
+                      |Some(ty) -> ty 
+                      |None ->  newtyvar() 
+        in  TyArrow( tyx ,(infer_expression_type  (bind (fst x)  tyx tenv) e))
 
       | RecFuns fs ->
-         (* match fs with
-	   |[] -> failwith "parsing error"
-	   |(ty_id,exprLoc)::tail -> *)
-	 failwith "Student! This is your job!"
+          let newEnv =    List.fold_left (fun x y -> bind (fst y) newtyvar()  x )   env fs in 
+           List.fold_left  (fun x y  -> mgu( lookup (fst y)  , infer_expression_type x snd y )) newEnv fs 
 
       | Apply (a, b) ->
-           failwith "Student! This is your job!"
+          failwith " this current job"
 
       | Literal l -> failwith "Student! This is your job!"
 
@@ -388,6 +417,13 @@ let typecheck tenv ast =
   and infer_literal_type = function
     | LInt _ ->
       tyint
+
+and check_tag_unicity : Position.t -> ('a * 'b) list -> string -> unit =
+    fun pos ls what ->
+        let ls = List.(sort (fun (l1, _) (l2, _) -> compare l1 l2) ls) in
+        let ls = fst (List.split ls) in
+        if not (ExtStd.List.all_distinct ls) then
+          error pos (Printf.sprintf "Each %s must appear exactly once." what)
 
   and check_unicity : Position.t -> ('a * 'b) list -> string -> unit =
     fun pos ls what ->
