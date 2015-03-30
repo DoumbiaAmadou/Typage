@@ -190,7 +190,7 @@ let initial_typing_environment () =
  let newtyvar () : standard_typvar =
    incrID := !incrID+1 ;  
    let id = !incrID in
-   {id = string_of_int(id) ;content= None}  
+   {id = string_of_int(id) ; content= None}  
 
 let rec   newVariablelist s = if s = 0 then [] else  newtyvar():: (newVariablelist (s-1)) 
 
@@ -292,19 +292,26 @@ let typecheck tenv ast =
   and infer_expression_type tenv e =
     let pos = Position.position e in
     match Position.value e with
-      | Fun (x, e) -> (**
-          let tyx = match snd x with
-                      |Some(ty) -> ty 
-                      |None ->  newtyvar() 
-        in  TyArrow( tyx ,(infer_expression_type  (bind (fst x)  tyx tenv) e))
-*)failwith "  not again "
+      | Fun (x, e) -> 
+          let tyx = match snd x with  
+                      |Some(ty) -> TypingEnvironment.bind tenv (fst x) (get_standard_typ ty)
+                      |None -> TypingEnvironment.bind tenv (fst x) (STVar (newtyvar () )) 
+         in  STArr (TypingEnvironment.lookup tenv (fst (x)) 
+              , ( infer_expression_type  tyx  e)
+              )
+        (*failwith "  not again"*)
       | RecFuns fs ->
-     (*     let newEnv =    List.fold_left (fun x y -> bind (fst y) newtyvar()  x )   env fs in 
-           List.fold_left  (fun x y  -> mgu( lookup (fst y)  , infer_expression_type x snd y )) newEnv fs 
-*)failwith " not again "
-      | Apply (a, b) ->
-          failwith " this current job"
-
+             (*     let newEnv =    List.fold_left (fun x y -> bind (fst y) newtyvar()  x )   env fs in 
+                   List.fold_left  (fun x y  -> mgu( lookup (fst y)  , infer_expression_type x snd y )) newEnv fs 
+        *)
+      failwith " not again "
+      | Apply (a, arg) ->
+          let tya = infer_expression_type tenv a in 
+          let tyarg = infer_expression_type tenv  arg  in 
+           let ts = newtyvar ()  in 
+            mgu [( tya, STArr(tyarg , (STVar ts )  ))] ; 
+           tyarg
+         
       | Literal l -> failwith "Student! This is your job!"
 
       | Variable x -> failwith "Student! This is your job!"
@@ -314,7 +321,7 @@ let typecheck tenv ast =
            failwith "Student! This is your job!"
 
       | IfThenElse (c, te, fe) ->
-           failwith "Student! This is your job!"
+        failwith "Student! This is your job!"
 
       | Tuple es ->
            failwith "Student! This is your job!"
