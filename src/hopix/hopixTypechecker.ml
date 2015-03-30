@@ -336,28 +336,90 @@ let typecheck tenv ast =
 
 
 
+   and pattern_mgu (list: (pattern * typ) list) = 
+    match list with
+    |[] -> true
+    |(p,t)::tail -> 
+      begin
+	match p,t with
+	|PWildcard,_
+	|PVariable(_),_
+	|PTuple(_),TyTuple(_)
+	|PTaggedValues(_,_),TyBase(_,_) -> pattern_mgu tail
+	|_ -> false
+      end
+
   (** [check_exhaustiveness pos ks bs] ensures that there is no
       forgotten cases in a case analysis assuming that [ks]
       are the only tags that can appear in the patterns of
       branches [bs]. *)
-  and check_exhaustiveness pos ks = function
-    | [] ->
-         failwith "Student! This is your job!"
+  and check_exhaustiveness ks = function
+    | [] -> 
+       begin
+	 match ks with
+	 |[] -> ()
+	 |case::tail -> failwith "not exhaustive branch list"
+       end
     | Branch (pat, _) :: bs ->
-         failwith "Student! This is your job!"
-
-      (** [infer_branches tenv pty previous_branch_type (Branch (p, e))]
+       begin
+	 match (Position.value pat) with
+	 |PWildcard-> ()
+	 |PVariable(id) -> ()
+	 |PTuple(id_list) -> 
+	   let new_ks = (List.filter 
+			   (fun x -> match x with
+				     |TyTuple(_) -> if (pattern_mgu [(Position.value pat,x)]) then false else true
+				     |_ -> true)
+			   ks
+			)
+	   in
+	   check_exhaustiveness new_ks bs		 
+				
+	 |PTaggedValues(tag,id_list) ->
+	   let new_ks = (List.filter 
+			   (fun x -> match x with
+				     |TyBase(_,_) -> if (pattern_mgu [(Position.value pat,x)]) then false else true
+				     |_ -> true)
+			   ks
+			)
+	   in
+	   check_exhaustiveness new_ks bs
+       end
+	 
+  (** [infer_branches tenv pty previous_branch_type (Branch (p, e))]
           checks that the pattern [p] has type [pty] and that the type of
           [e] (if it exists) is the same as the one of the previous
           branch (unless this is the first branch). *)
-  and infer_branches tenv pty previous_branch_type = function
+  and infer_branches tenv pty  previous_branch_type = function
     | [] ->
       begin match previous_branch_type with
         | None -> assert false (* By parsing. *)
         | Some ty -> ty
       end
     | Branch (pat, e) :: bs ->
-         failwith "Student! This is your job!"
+       begin
+	 match previous_branch_type with
+         | None ->
+	    let mmgu = pattern_mgu([((Position.value pat),pty)]) 
+	    in
+	    if(mmgu) then
+	      infer_branches tenv pty (Some (infer_expression_type tenv e)) bs	      
+	    else
+              failwith "not the same pattern"
+
+	 | Some ty -> 
+	    let mmgu = pattern_mgu ([((Position.value pat),pty)])
+	    in
+	    if(mmgu) then
+	      begin
+		mgu ([
+		      ((infer_expression_type tenv e), ty)
+		    ]);
+		infer_branches tenv pty previous_branch_type bs
+	      end
+	    else
+	      failwith "not the same pattern"
+       end
 
   (** [check_pattern tenv pty pat] checks that [pat] can be assigned
       the type [pty] and, if so, returns an extension of [tenv] with
@@ -365,13 +427,17 @@ let typecheck tenv ast =
   and check_pattern tenv pty pat =
     match Position.value pat, pty with
       | PVariable x, _ ->
-           failwith "Student! This is your job!"
+         TypingEnvironment.bind tenv x (get_standard_typ pty)
 
       | PTuple xs, TyTuple tys ->
-           failwith "Student! This is your job!"
+         if((List.length xs)=(List.length tys)) then
+	   List.fold_left2 (fun env x v -> TypingEnvironment.bind env x v)
+			   tenv
+			   xs
+			   (get_standard_typ_list tys)
+	 else failwith "cannot bind this pattern with this type"
 
-      | PWildcard, _ ->
-           failwith "Student! This is your job!"
+      | PWildcard, _ -> tenv
 
       | PTaggedValues (k, xs), TyBase (t,_) ->
            failwith "Student! This is your job!"
