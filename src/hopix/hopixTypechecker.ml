@@ -36,7 +36,7 @@ module TypingEnvironment : sig
   (** [bind env x ty] returns an environment that assigns [ty]
       the variable [x] and extends [env]. *)
   val bind
-    : t -> identifier -> typ -> t
+    : t -> identifier -> standard_typ -> t
 
   (** [UnboundIdentifier x] is raised if [x] is unbound. *)
   exception UnboundIdentifier of identifier
@@ -44,7 +44,7 @@ module TypingEnvironment : sig
   (** [lookup env x] returns the type assigned to [x] in [env].
       Raise {!UnboundIdentifier x} if no such variable exists. *)
   val lookup
-    : t -> identifier -> typ
+    : t -> identifier -> standard_typ
 
   (** [bind_type_definition env t tdef] introduces a new type definition
       in [env]. *)
@@ -101,7 +101,7 @@ module TypingEnvironment : sig
 
 end = struct
   type t = {
-    variables : (identifier * typ) list;
+    variables : (identifier * standard_typ) list;
     typedefs  : (type_identifier * type_definition) list;
   }
 
@@ -266,8 +266,6 @@ let typecheck tenv ast =
 				    end
 		    |_ -> failwith "error: not the same type!"
 
-  
-
   (** [define_value tenv p e] returns a new environment that associates
       a type to each of the variables bound by the pattern [p]. *)
 
@@ -275,17 +273,17 @@ let typecheck tenv ast =
       match (Position.value p , infer_expression_type tenv e ) with 
         | (PWildcard , _ ) -> tenv  
         | (PVariable i, t )  -> TypingEnvironment.bind  tenv   i t 
-        | (PTuple li , t ) -> 
-              let a = (newVariablelist (List.length li) ) in  
-              let l = List.combine ( a) ( get_standard_typ t) in
-              mgu(l);  
-              List.fold_left (fun e v typ -> bind  e v t ) tenv li  t 
+        | (PTuple li , typ) -> 
+              let astlist = (newVariablelist (List.length li) )in 
+              let a =List.map (fun x -> STVar x )  astlist in  
+              mgu([ STCstTyp ("tuple", a) , typ]);  
+              List.fold_left2 (fun e v t -> TypingEnvironment.bind e v t ) tenv li  a
                           
         | (PTaggedValues (tag,il )) , u -> 
           let (id , lab) =  TypingEnvironment.lookup_tagged_union_type_from_tag tenv tag in
           let typlist = List.assoc tag lab in   
-          mgu([STCstTyp (id,typlist) ; u ] ) ;                    
-           List.fold_left (fun e v typ -> bind  e v t ) tenv il typlist 
+          mgu([STCstTyp("tuple", get_standard_typ_list typlist) , u ] ) ;                    
+           List.fold_left2 (fun e v t -> TypingEnvironment.bind e  v t ) tenv il (get_standard_typ_list typlist) 
                                         
   
 
@@ -294,15 +292,16 @@ let typecheck tenv ast =
   and infer_expression_type tenv e =
     let pos = Position.position e in
     match Position.value e with
-      | Fun (x, e) -> let tyx = match snd x with
+      | Fun (x, e) -> (**
+          let tyx = match snd x with
                       |Some(ty) -> ty 
                       |None ->  newtyvar() 
         in  TyArrow( tyx ,(infer_expression_type  (bind (fst x)  tyx tenv) e))
-
+*)failwith "  not again "
       | RecFuns fs ->
-          let newEnv =    List.fold_left (fun x y -> bind (fst y) newtyvar()  x )   env fs in 
+     (*     let newEnv =    List.fold_left (fun x y -> bind (fst y) newtyvar()  x )   env fs in 
            List.fold_left  (fun x y  -> mgu( lookup (fst y)  , infer_expression_type x snd y )) newEnv fs 
-
+*)failwith " not again "
       | Apply (a, b) ->
           failwith " this current job"
 
@@ -396,13 +395,13 @@ let typecheck tenv ast =
 
   and check_expression_type tenv xty e : unit =
     let ity = infer_expression_type tenv e in
-    if ity <> xty then
-      error (Position.position e) (
+    if ity <> xty then failwith " prettyPrinter problème"
+     (* error (Position.position e) (
         Printf.sprintf "Incompatible types.\nExpected: %s\nInferred: %s\n"
-          (HopixPrettyPrinter.(to_string typ xty))
-          (HopixPrettyPrinter.(to_string typ ity))
-      )
-
+          (*(HopixPrettyPrinter.(to_string typ xty))
+          (HopixPrettyPrinter.(to_string typ ity))*)
+        )
+      *)
   and check_same_length : Position.t -> 'a list -> 'b list -> unit =
     fun pos a b ->
     let aln = List.length a and bln = List.length b in
@@ -418,19 +417,27 @@ let typecheck tenv ast =
     | LInt _ ->
       tyint
 
-and check_tag_unicity : Position.t -> ('a * 'b) list -> string -> unit =
+and check_tag_unicity : Position.t -> ('a * 'b list) list -> string -> unit =
     fun pos ls what ->
         let ls = List.(sort (fun (l1, _) (l2, _) -> compare l1 l2) ls) in
         let ls = fst (List.split ls) in
         if not (ExtStd.List.all_distinct ls) then
           error pos (Printf.sprintf "Each %s must appear exactly once." what)
 
-  and check_unicity : Position.t -> ('a * 'b) list -> string -> unit =
-    fun pos ls what ->
-        let ls = List.(sort (fun (l1, _) (l2, _) -> compare l1 l2) ls) in
-        let ls = fst (List.split ls) in
-        if not (ExtStd.List.all_distinct ls) then
-          error pos (Printf.sprintf "Each %s must appear exactly once." what)
+and all_distinct ls =
+    
+    let ls = List.sort compare ls in
+    let rec aux = function
+      | [] | [_] -> true
+      | x :: y :: ys -> x <> y && aux (y :: ys)
+     in
+  aux ls 
 
+and check_unicity  =
+  fun  pos ls what ->
+    let ls = List.(sort (fun (l1, _) (l2, _) -> compare l1 l2) ls) in
+    let ls = fst (List.split ls) in
+    if  not (all_distinct ls )then
+        error pos (Printf.sprintf "Each %s must appear exactly once." what)
   in
   program tenv ast
